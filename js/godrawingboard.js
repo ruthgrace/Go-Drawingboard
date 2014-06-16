@@ -1,6 +1,6 @@
 var godrawingboard = (function() {
-  var ASYNC_URL = 'https://cdnjs.cloudflare.com/ajax/libs/async/0.2.7/async.min.js';  
-  var GO_DRAWINGBOARD_APP = 'https://goinstant.net/adeee38ff485/marble_painting_test';
+  var GI_APP_URL = 'https://goinstant.net/adeee38ff485/marble_painting_test';
+  var ASYNC_URL = 'https://cdnjs.cloudflare.com/ajax/libs/async/0.2.7/async.min.js';
 
   var SCRIPT_URLS = [
     ['https://cdn.goinstant.net/v1/platform.min.js', 'goinstant'],  //PLATFORM
@@ -24,75 +24,66 @@ var godrawingboard = (function() {
   var roomName;
   var userName;
   var alreadyLoaded;
-  var drawingboardRoom;
+  var roomObj;
   var slide;
   var query;
 
   function connectToPlatform(cb) {
-    var platform = new goinstant.Platform(GO_DRAWINGBOARD_APP);
     var notifications;
 
     async.series([
       // connect to GoInstant platform
-      platform.connect.bind(platform),
-
       // create (if needed) the room instance for the drawingboard and
       // join the room and gain access to the drawingboard stat information
       function(next) {
-        drawingboardRoom = platform.room(roomName);
-        console.log('Joined room: "'  + roomName + '"');
-        drawingboardRoom.join(next);
-      },
-
-      // subscribe to any notifications in the presentaiton room.
-      function(next) {
-        notifications = new goinstant.widgets.Notifications();
-        notifications.subscribe(drawingboardRoom, next);
-      },
-
-      // set up the user's display name
-      function(next) {
-        if (alreadyLoaded) {
-          return next();
-        }
-
-        var publishOpts = {
-          room: drawingboardRoom,
-          type: 'success',
-          message: userName + ' has joined.'
-        };
-
-        drawingboardRoom.user(function(err, user, userKey) {
-          if (err) {
-            return next(err);
-          }
-
-          var displayNameKey = userKey.key('displayName');
-          displayNameKey.set(userName, function(err) {
-            if (err) {
-              return next(err);
-            }
-
-            // publish a notification of the new user
-            notifications.publish(publishOpts, next);
-          });
+        goinstant.connect(GI_APP_URL, {
+          room: roomName
+        }, function(err, conn, room) {
+          roomObj = room;
+          next();
         });
       },
 
       // select a colour for the current user
       function(next) {
-        var opts = {
-          room: drawingboardRoom
-        };
-
-        var userColors = new goinstant.widgets.UserColors(opts);
+        var userColors = new goinstant.widgets.UserColors({ room: roomObj });
         userColors.choose(next);
+      },
+
+      // subscribe to any notifications in the drawingboard room.
+      function(next) {
+        notifications = new goinstant.widgets.Notifications();
+        notifications.subscribe(roomObj, next);
+      },
+
+      // set up the user's display name
+      function(next) {
+        var displayNameKey = roomObj.self().key('displayName');
+
+        displayNameKey.set(userName, function(err) {
+          if (err) {
+            return next(err);
+          }
+
+          if (alreadyLoaded) {
+            return next();
+          }
+
+          var publishOpts = {
+            room: roomObj,
+            type: 'success',
+            message: userName + ' has joined.'
+          };
+
+          // publish a notification of the new user
+          notifications.publish(publishOpts, next);
+        });
       },
 
       // initialize the user list
       function(next) {
         var opts = {
-          room: drawingboardRoom,
+          room: roomObj,
           position: 'right'
         };
 
@@ -103,7 +94,7 @@ var godrawingboard = (function() {
       // initialize the clicking indicator
       function(next) {
         var opts = {
-          room: drawingboardRoom
+          room: roomObj
         };
 
         var clickIndicator = new goinstant.widgets.ClickIndicator(opts);
@@ -111,16 +102,11 @@ var godrawingboard = (function() {
       },
 
       function(next) {
-        drawingboardRoom.user(function(err, userObj, userKeyObj) {
-          if (err) {
-            throw err;
+        var defaultBoard = new DrawingBoard.Board('default-board', {
+          goinstant: {
+            room: roomObj,
+            userKey: roomObj.self()
           }
-          var defaultBoard = new DrawingBoard.Board('default-board', {
-            goinstant: {
-              room: drawingboardRoom,
-              userKey: userKeyObj
-            }
-          });
         });
         next();
       },
@@ -338,3 +324,4 @@ var godrawingboard = (function() {
 })();
 
 godrawingboard.initialize();
+
